@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from data import ModelNet40
+from data import ModelNet40, ScanObjectNNCls
 from model import Pct
 import numpy as np
 from torch.utils.data import DataLoader
@@ -27,14 +27,22 @@ def _init_():
     os.system('cp data.py checkpoints' + '/' + args.exp_name + '/' + 'data.py.backup')
 
 def train(args, io):
-    train_loader = DataLoader(ModelNet40(partition='train', num_points=args.num_points), num_workers=8,
-                            batch_size=args.batch_size, shuffle=True, drop_last=True)
-    test_loader = DataLoader(ModelNet40(partition='test', num_points=args.num_points), num_workers=8,
-                            batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+    if args.dataset == "modelnet40":
+        train_loader = DataLoader(ModelNet40(partition='train', num_points=args.num_points), num_workers=8,
+                                batch_size=args.batch_size, shuffle=True, drop_last=True)
+        test_loader = DataLoader(ModelNet40(partition='test', num_points=args.num_points), num_workers=8,
+                                batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+        num_classes = 40
+    elif args.dataset == "scanobjnn":
+        train_loader = DataLoader(ScanObjectNNCls(train=True, num_points=args.num_points), num_workers=8,
+                                batch_size=args.batch_size, shuffle=True, drop_last=True)
+        test_loader = DataLoader(ScanObjectNNCls(train=False, num_points=args.num_points), num_workers=8,
+                                batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+        num_classes = 15
 
     device = torch.device("cuda" if args.cuda else "cpu")
 
-    model = Pct(args).to(device)
+    model = Pct(args, output_channels=num_classes).to(device)
     print(str(model))
     model = nn.DataParallel(model)
 
@@ -130,12 +138,19 @@ def train(args, io):
 
 
 def test(args, io):
-    test_loader = DataLoader(ModelNet40(partition='test', num_points=args.num_points),
+
+    if args.dataset == "modelnet40":
+        test_loader = DataLoader(ModelNet40(partition='test', num_points=args.num_points),
                             batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+        num_classes = 40
+    elif args.dataset == "scanobjnn":
+        test_loader = DataLoader(ScanObjectNNCls(train=False, num_points=args.num_points), num_workers=8,
+                                batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+        num_classes = 15
 
     device = torch.device("cuda" if args.cuda else "cpu")
 
-    model = Pct(args).to(device)
+    model = Pct(args, output_channels=num_classes).to(device)
     model = nn.DataParallel(model) 
     
     model.load_state_dict(torch.load(args.model_path))
@@ -164,7 +179,7 @@ if __name__ == "__main__":
     parser.add_argument('--exp_name', type=str, default='exp', metavar='N',
                         help='Name of the experiment')
     parser.add_argument('--dataset', type=str, default='modelnet40', metavar='N',
-                        choices=['modelnet40'])
+                        choices=['modelnet40', 'scanobjnn'])
     parser.add_argument('--batch_size', type=int, default=32, metavar='batch_size',
                         help='Size of batch)')
     parser.add_argument('--test_batch_size', type=int, default=16, metavar='batch_size',
